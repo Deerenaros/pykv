@@ -1,0 +1,5 @@
+FROM localhost/pykv
+
+RUN pip install -r requirements-dev.txt
+
+CMD ["python", "-m", "tests"]
