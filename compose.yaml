@@ -1,0 +1,25 @@
+version: '3'
+
+services:
+  pykv:
+    image: localhost/pykv
+    build: .
+    command: python -m pykv
+    restart: unless-stopped
+    environment:
+      - PORT=80
+    ports:
+      - 8887:80
+    volumes:
+      - ./data/:/data
+
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.tests
+    command: python -m tests
+    restart: no
+    links:
+      - pykv
+    depends_on:
+      - pykv
