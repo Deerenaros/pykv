@@ -1,4 +1,4 @@
-from db import DB
+from pykv.db import DB
 
 
 db = DB("/tmp/testing")

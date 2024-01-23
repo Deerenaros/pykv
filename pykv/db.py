@@ -41,8 +41,8 @@ class DBInterface:
     class PasskeyIsWrongOrEmpty(Error):
         pass
 
-    def get_root(self):
-        count, key, curr = 0, [], self
+    def get_root(self) -> tuple[int, "DB", str]:
+        count, curr, key = 0, self, []
         while isinstance(curr, Transaction):
             count += 1
             logging.debug("fetching: %s %s %s", count, key, curr)
@@ -143,24 +143,28 @@ class Transaction(DBInterface):
     def select_keys(self, value) -> list:
         return self.root.select_keys(value)
 
-    def set(self, key: str, value):
+    def journal_before_change(self, key: str):
         try:
             val = self.get(key)
-            self.root.invalids[key] = val
+            self.root.journaled[key] = val
             self.journal.write(b"\x01")
             val = json.dumps(val)
             self.journal.write(len(val.encode()).to_bytes(4))
             self.journal.write(val.encode())
         except self.NotFound:
-            self.root.invalids[key] = None
+            self.root.journaled[key] = self.NotFound
             self.journal.write(b"\x00")
         finally:
-            logging.debug("Current invalids: %s", self.root.invalids)
+            logging.debug("Current invalids: %s", self.root.journaled)
             self.journal.write(len(key.encode()).to_bytes(4))
             self.journal.write(key.encode())
-            self.root.set(key, value)
+
+    def set(self, key: str, value):
+        self.journal_before_change(key)
+        self.root.set(key, value)
 
     def remove(self, key: str):
+        self.journal_before_change(key)
         self.root.remove(key)
 
     def begin(self) -> "DBInterface":
@@ -172,7 +176,7 @@ class Transaction(DBInterface):
             restore = self.restore(self.journal_path)
             logging.debug("Restored: %s", restore)
             for k in restore.keys():
-                del self.root.invalids[k]
+                del self.root.journaled[k]
 
             self.journal_path.unlink()
 
@@ -208,7 +212,7 @@ class DB(DBInterface):
 
     def __init__(self, dbpath: str | Path = Path("/data/default")):
         self.path = Path(dbpath)
-        self.invalids = dict()
+        self.journaled = dict()
 
         if self.path.exists() and not self.path.is_dir():
             raise self.LoadError("Path directs to a file, directory allowed")
@@ -220,16 +224,16 @@ class DB(DBInterface):
             self.create()
 
             for j in self.path.glob("*.journal"):
-                self.invalids.update(Transaction.restore(j))
-                for k, v in self.invalids:
+                self.journaled.update(Transaction.restore(j))
+                for k, v in self.journaled:
                     self.set(k, v)
-                self.invalids.clear()
+                self.journaled.clear()
                 j.unlink()
 
     def get(self, key: str, none_if_not_found=False):
-        if key in self.invalids:
-            if self.invalids[key] is not None:
-                return self.invalids[key]
+        if key in self.journaled:
+            if self.journaled[key] is not self.NotFound:
+                return self.journaled[key]
             if none_if_not_found:
                 return None
             raise self.NotFound()
@@ -263,7 +267,6 @@ class DB(DBInterface):
             if p.name[0] != ".":
                 key = base64.urlsafe_b64decode(p.name).decode()
                 val = self.get(key)
-                print(key, val, value)
                 if value == val:
                     result.append(key)
         return result
