@@ -83,6 +83,10 @@ class DBInterface:
         pass
 
     @abstractmethod
+    def select_keys(self, value) -> list:
+        pass
+
+    @abstractmethod
     def remove(self, key: str):
         pass
 
@@ -106,7 +110,7 @@ class Transaction(DBInterface):
         self.partkey = "".join(random.choice(string.ascii_letters) for _ in range(0, 16))
         self.parent = parent
         self.queue = dict()
-        self.journal_path = self.root.path / f"{self.count}.journal"
+        self.journal_path = self.root.path / f".{self.count}.journal"
         self.journal = self.journal_path.open("xb")
 
     @classmethod
@@ -135,6 +139,9 @@ class Transaction(DBInterface):
 
     def get(self, key: str):
         return self.root.get(key)
+    
+    def select_keys(self, value) -> list:
+        return self.root.select_keys(value)
 
     def set(self, key: str, value):
         try:
@@ -160,7 +167,7 @@ class Transaction(DBInterface):
         return Transaction(self)
 
     def commit(self) -> "DBInterface":
-        with DBLock(self.root.path.parent / ".lock"):
+        with DBLock(self.root.path.parent.with_name(f".{self.root.path.parent.name}")):
             self.journal.close()
             restore = self.restore(self.journal_path)
             logging.debug("Restored: %s", restore)
@@ -172,7 +179,7 @@ class Transaction(DBInterface):
         return self.parent
 
     def rollback(self) -> "DBInterface":
-        with DBLock(self.root.path.parent / ".lock"):
+        with DBLock(self.root.path.parent.with_name(f".{self.root.path.parent.name}")):
             self.journal.close()
             restore = self.restore(self.journal_path)
 
@@ -243,12 +250,23 @@ class DB(DBInterface):
     def set(self, key: str, value):
         guess = self.path / base64.urlsafe_b64encode(key.encode()).decode()
 
-        with DBLock(guess.with_suffix(".lock")):
+        with DBLock(guess.with_name(f".{guess.name}.lock")):
             if guess.exists() and not guess.is_file():
                 raise self.CorruptedDatabase()
 
             with guess.open("w") as writer:
                 json.dump(value, writer)
+
+    def select_keys(self, value) -> list:
+        result = []
+        for p in self.path.glob("*"):
+            if p.name[0] != ".":
+                key = base64.urlsafe_b64decode(p.name).decode()
+                val = self.get(key)
+                print(key, val, value)
+                if value == val:
+                    result.append(key)
+        return result
 
     def remove(self, key: str):
         guess = self.path / base64.urlsafe_b64encode(key.encode()).decode()

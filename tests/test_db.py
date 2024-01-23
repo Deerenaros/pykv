@@ -41,3 +41,23 @@ def test_transactions():
     assert db.get("int") == 123
     assert db.get("rollbacking", True) is None
     assert db.get("commiting") == 123
+
+
+def test_select():
+    db.drop()
+
+    db.set("key_1", "samevalue")
+    db.set("key_2", "samevalue")
+    db.set("key_3", "samevalue")
+
+    t = db.begin()
+
+    t.set("key_1", {"same": "json"})
+    t.set("key_2", {"same": "json"})
+    t.set("key_3", {"same": "json"})
+
+    assert db.select_keys("samevalue") == ["key_1", "key_2", "key_3"]
+
+    t.commit()
+
+    assert db.select_keys({"same": "json"}) == ["key_1", "key_2", "key_3"]

@@ -73,3 +73,20 @@ passkey = resp.json().get("passkey")
 assert passkey == ""
 
 
+resp = requests.put("http://pykv/api/v1/item/key1", json=ITEM | {"x": "y"})
+logging.info(resp.json())
+assert resp.json() == {"status": "ok"}
+resp = requests.put("http://pykv/api/v1/item/key2", json=ITEM | {"x": "y"})
+logging.info(resp.json())
+assert resp.json() == {"status": "ok"}
+resp = requests.put("http://pykv/api/v1/item/key3", json=ITEM | {"x": "y"})
+logging.info(resp.json())
+assert resp.json() == {"status": "ok"}
+
+resp = requests.delete("http://pykv/api/v1/item/key123")
+logging.info(resp.json())
+assert resp.json() == {"status": "ok"}
+
+resp = requests.get("http://pykv/api/v1/selectkeys", json=ITEM | {"x": "y"})
+logging.info(resp.json())
+assert resp.json() == {"status": "ok", "keys": ["key1", "key2", "key3"]}
